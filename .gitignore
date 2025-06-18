@@ -17,3 +17,6 @@ __pycache__/
 *.log
 *.tmp
 *.bak
+
+# Custom
+secrets.h

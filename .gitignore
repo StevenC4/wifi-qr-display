@@ -1,0 +1,19 @@
+# PlatformIO
+.pio/
+.vscode/
+*.pyc
+*.pyo
+*.env
+.DS_Store
+__pycache__/
+
+# Arduino / ESP32 Core
+*.elf
+*.bin
+*.hex
+*.map
+
+# SD card test logs or debug dumps (optional)
+*.log
+*.tmp
+*.bak

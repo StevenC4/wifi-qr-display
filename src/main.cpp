@@ -2,7 +2,6 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include <qrcode.h>
 #include <utility/qrcode.h>
 
 const char* ssid = "YourNetworkName";
@@ -58,11 +57,11 @@ void fetchAndDisplayQR() {
       return;
     }
 
-    String ssid = doc["ssid"];
-    String pass = doc["password"];
+    String ssidText = doc["ssid"];
+    String passText = doc["password"];
     String qr = doc["qr"];
 
-    showWiFiInfo(ssid, pass);
+    showWiFiInfo(ssidText, passText);
     drawQRCode(qr);
   } else {
     Serial.printf("HTTP Error: %d\n", httpCode);
@@ -80,10 +79,20 @@ void setup() {
   M5.Lcd.fillScreen(BLACK);
   M5.Lcd.drawString("Connecting to Wi-Fi...", 160, 120);
 
+  unsigned long startAttemptTime = millis();
   WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
+
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
     delay(500);
   }
+
+  if (WiFi.status() != WL_CONNECTED) {
+    M5.Lcd.fillScreen(RED);
+    M5.Lcd.setTextColor(WHITE);
+    M5.Lcd.drawString("Wi-Fi failed!", 160, 120);
+    return;
+  }
+
 
   M5.Lcd.fillScreen(BLACK);
   M5.Lcd.drawString("Fetching QR code...", 160, 120);

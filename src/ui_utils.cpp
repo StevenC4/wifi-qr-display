@@ -2,8 +2,9 @@
 
 LGFX_Sprite sprite(&M5.Lcd);
 void initSprite() {
-  sprite.createSprite(M5.Lcd.width(), M5.Lcd.height());
   sprite.setColorDepth(16);
+  sprite.setPsram(true);
+  sprite.createSprite(M5.Lcd.width(), M5.Lcd.height());
 }
 
 void drawQRCode(const String& qrText) {

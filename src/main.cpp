@@ -39,7 +39,7 @@ void setup() {
   M5.begin(cfg);
   initSprite();
 
-  sprite.setRotation(1);
+  sprite.setRotation(0);
   sprite.setTextSize(2);
   sprite.setTextColor(WHITE);
   sprite.setTextDatum(MC_DATUM);

@@ -34,13 +34,41 @@ void showWiFiInfo(const String& ssidText, const String& passText) {
 
   int padding = 12;  // vertical space between the two rows
   int lineHeight = sprite.fontHeight();
+  int centerX = sprite.width() / 2;
 
-  // Calculate total block height and start Y
-  int totalHeight = lineHeight * 2 + padding;
-  int startY = (sprite.height() - totalHeight) / 2;
+  int currentY = (sprite.height() - 3 * lineHeight - padding) / 2;
+  sprite.drawString(ssidText.c_str(), centerX, currentY);
+  currentY += lineHeight + padding;
 
-  sprite.drawString(ssidText.c_str(), sprite.width() / 2, startY);
-  sprite.drawString(passText.c_str(), sprite.width() / 2, startY + lineHeight + padding);
+  int maxWidth = sprite.width() - 20;
+  String line = "";
+  for (int i = 0; i < passText.length(); ++i) {
+    line += passText[i];
+    if (sprite.textWidth(line) > maxWidth) {
+      line.remove(line.length() - 1); // remove overflow char
+      sprite.drawString(line, centerX, currentY);
+      currentY += lineHeight;
+      line = passText[i];
+    }
+  }
+  if (line.length() > 0) {
+    sprite.drawString(line, centerX, currentY);
+  }
+}
+
+void drawBatteryIcon(int x, int y) {
+  bool charging = M5.Power.isCharging();
+  int level = M5.Power.getBatteryLevel();  // 0–100
+
+  // Battery outline
+  sprite.drawRect(x, y, 28, 14, BLACK);   // main battery body
+  sprite.fillRect(x + 28, y + 4, 2, 6, BLACK); // terminal nub
+
+  // Fill based on level
+  int bars = map(level, 0, 100, 0, 4);
+  for (int i = 0; i < bars; ++i) {
+    sprite.fillRect(x + 3 + i * 6, y + 3, 5, 8, charging ? YELLOW : GREEN);
+  }
 }
 
 void showError(const String& message) {

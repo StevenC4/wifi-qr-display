@@ -27,9 +27,13 @@ void renderCurrentView() {
     showWiFiInfo(currentData.ssid, currentData.password);
   }
 
+  drawBatteryIcon(sprite.width() - 42, 12);
+
   // Border progress
-  unsigned long elapsed = millis() - lastFetch;
-  drawProgressBorder(elapsed, REFRESH_INTERVAL_MS, GREEN);
+  if (!currentData.isStatic) {
+    unsigned long elapsed = millis() - lastFetch;
+    drawProgressBorder(elapsed, REFRESH_INTERVAL_MS, GREEN);
+  }
 
   sprite.pushSprite(0, 0);
 }
@@ -37,6 +41,7 @@ void renderCurrentView() {
 void setup() {
   auto cfg = M5.config();
   M5.begin(cfg);
+
   initSprite();
 
   sprite.setRotation(0);
@@ -92,10 +97,17 @@ void loop() {
   }
 
   // --- Periodic Refresh ---
-  if (now - lastFetch >= REFRESH_INTERVAL_MS) {
+  unsigned long refreshInterval = currentData.isStatic
+    ? 60UL * 1000UL               // 1-minute refresh for static passwords
+    : max((unsigned long) 5000,    // at least 5 seconds between requests
+        currentData.validUntil > millis()
+          ? currentData.validUntil - millis()
+          : 0);
+  if (now - lastFetch >= refreshInterval) {
     currentData = fetchWifiData();
-    lastFetch = now;
+    lastFetch = millis();
     lastActivity = now;
+    renderCurrentView();
   }
 
   // --- Auto Screen Off ---

@@ -28,10 +28,15 @@ WifiData currentWifiData;
 
 WifiData fetchWifiData() {
 #ifdef LOCAL_TEST_MODE
-  String ssid = "Cruzeiro do Sul";
-  String pass = generatePassphrase(4);
+  String ssid = GUEST_WIFI_SSID;
+  String pass = GUEST_WIFI_PASSWORD;
+  if (ROTATE_PASSWORD) {
+    pass = generatePassphrase(4);
+  }
   WifiData data(ssid, pass);
   data.fetchedAt = millis();
+  data.validUntil = millis() + (15UL * 1000UL); // 15 milliseconds
+  data.isStatic = true;
   data.valid = true;
   return data;
 #else
@@ -72,6 +77,8 @@ WifiData fetchWifiData() {
 
     WifiData data(ssid, pass);
     data.fetchedAt = millis();
+    data.validUntil = doc["validUntil"].as<unsigned long>();
+    data.isStatic = doc["static"] | false;
     data.valid = true;
     return data;
   } else {

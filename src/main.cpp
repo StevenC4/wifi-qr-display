@@ -1,105 +1,122 @@
-#include <M5Core2.h>
+#include <M5Unified.h>
+#include "driver/adc.h"
 #include <WiFi.h>
-#include <HTTPClient.h>
-#include <ArduinoJson.h>
-#include <utility/qrcode.h>
+#include "secrets.h"
+#include "net.h"
+#include "ui_utils.h"
 
-const char* ssid = "YourNetworkName";
-const char* password = "YourNetworkPassword";
+#ifdef LOCAL_TEST_MODE
+const unsigned long REFRESH_INTERVAL_MS = 15UL * 1000UL;  // 15 seconds
+#else
+const unsigned long REFRESH_INTERVAL_MS = 6UL * 60UL * 60UL * 1000UL;  // 6 hours
+#endif
+const unsigned long SCREEN_TIMEOUT_MS = 5UL * 60UL * 1000UL;  // 5 min
+const unsigned long SLEEP_TIMEOUT_MS = 15UL * 60UL * 1000UL;  // 15 min
 
-const char* serverUrl = "http://mozart.local/wifi-info";  // Your server endpoint
+unsigned long lastFetch = 0;
+unsigned long lastActivity = 0;
+bool screenOn = true;
+bool showQRCodeView = true; // Start in QR-only mode
+WifiData currentData;
 
-void drawQRCode(const String& qrText) {
-  QRCode qrcode;
-  uint8_t qrcodeData[qrcode_getBufferSize(3)];
-  qrcode_initText(&qrcode, qrcodeData, 3, ECC_LOW, qrText.c_str());
-
-  int scale = 5;
-  int offsetX = 20;
-  int offsetY = 30;
-
-  for (int y = 0; y < qrcode.size; y++) {
-    for (int x = 0; x < qrcode.size; x++) {
-      int px = offsetX + x * scale;
-      int py = offsetY + y * scale;
-      if (qrcode_getModule(&qrcode, x, y)) {
-        M5.Lcd.fillRect(px, py, scale, scale, BLACK);
-      } else {
-        M5.Lcd.fillRect(px, py, scale, scale, WHITE);
-      }
-    }
-  }
-}
-
-void showWiFiInfo(const String& ssidText, const String& passText) {
-  M5.Lcd.fillScreen(WHITE);
-  M5.Lcd.setTextColor(BLACK);
-  M5.Lcd.setCursor(10, 150);
-  M5.Lcd.setTextSize(2);
-  M5.Lcd.printf("SSID: %s", ssidText.c_str());
-
-  M5.Lcd.setCursor(10, 180);
-  M5.Lcd.printf("Pass: %s", passText.c_str());
-}
-
-void fetchAndDisplayQR() {
-  HTTPClient http;
-  http.begin(serverUrl);
-  int httpCode = http.GET();
-
-  if (httpCode == 200) {
-    String payload = http.getString();
-    StaticJsonDocument<512> doc;
-    DeserializationError err = deserializeJson(doc, payload);
-
-    if (err) {
-      Serial.println("JSON parse failed");
-      return;
-    }
-
-    String ssidText = doc["ssid"];
-    String passText = doc["password"];
-    String qr = doc["qr"];
-
-    showWiFiInfo(ssidText, passText);
-    drawQRCode(qr);
+void renderCurrentView() {
+  sprite.fillScreen(WHITE);
+  if (showQRCodeView) {
+    drawQRCode(currentData.getQr());
   } else {
-    Serial.printf("HTTP Error: %d\n", httpCode);
+    showWiFiInfo(currentData.ssid, currentData.password);
   }
 
-  http.end();
+  // Border progress
+  unsigned long elapsed = millis() - lastFetch;
+  drawProgressBorder(elapsed, REFRESH_INTERVAL_MS, GREEN);
+
+  sprite.pushSprite(0, 0);
 }
 
 void setup() {
-  M5.begin();
-  M5.Lcd.setRotation(1);
-  M5.Lcd.setTextSize(2);
-  M5.Lcd.setTextColor(WHITE);
-  M5.Lcd.setTextDatum(MC_DATUM);
-  M5.Lcd.fillScreen(BLACK);
+  auto cfg = M5.config();
+  M5.begin(cfg);
+  initSprite();
+
+  sprite.setRotation(1);
+  sprite.setTextSize(2);
+  sprite.setTextColor(WHITE);
+  sprite.setTextDatum(MC_DATUM);
+  sprite.fillScreen(WHITE);
+
+#ifndef LOCAL_TEST_MODE
   M5.Lcd.drawString("Connecting to Wi-Fi...", 160, 120);
 
+  configTime(0, 0, "pool.ntp.org");
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  
   unsigned long startAttemptTime = millis();
-  WiFi.begin(ssid, password);
-
   while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
     delay(500);
   }
 
   if (WiFi.status() != WL_CONNECTED) {
     M5.Lcd.fillScreen(RED);
-    M5.Lcd.setTextColor(WHITE);
     M5.Lcd.drawString("Wi-Fi failed!", 160, 120);
     return;
   }
 
-
   M5.Lcd.fillScreen(BLACK);
   M5.Lcd.drawString("Fetching QR code...", 160, 120);
+#endif
 
-  fetchAndDisplayQR();
+  currentData = fetchWifiData();
+  lastFetch = millis();
+  renderCurrentView();
 }
 
 void loop() {
-  // Device could enter deep sleep here if desired
+  M5.update();
+  unsigned long now = millis();
+
+  // --- Handle Button A Press ---
+  auto touch = M5.Touch.getDetail();
+  if (M5.BtnA.wasPressed() || touch.wasPressed()) {
+    lastActivity = now;
+
+    if (!screenOn) {
+      M5.Lcd.wakeup();
+      screenOn = true;
+      showQRCodeView = true;
+      renderCurrentView();
+    } else {
+      showQRCodeView = !showQRCodeView;
+      renderCurrentView();
+    }
+  }
+
+  // --- Periodic Refresh ---
+  if (now - lastFetch >= REFRESH_INTERVAL_MS) {
+    currentData = fetchWifiData();
+    lastFetch = now;
+    lastActivity = now;
+  }
+
+  // --- Auto Screen Off ---
+  if (screenOn && (now - lastActivity >= SCREEN_TIMEOUT_MS)) {
+    M5.Lcd.sleep();
+    screenOn = false;
+  }
+
+  // --- Auto Deep Sleep ---
+  if (now - lastActivity >= SLEEP_TIMEOUT_MS) {
+    M5.Lcd.fillScreen(BLACK);
+    M5.Lcd.setTextColor(WHITE);
+    M5.Lcd.drawString("Sleeping...", 160, 120);
+    delay(1000);
+    esp_sleep_enable_ext0_wakeup(GPIO_NUM_39, 0); // Wake on Btn A
+    esp_deep_sleep_start();
+  }
+
+  if (screenOn) {
+    renderCurrentView();
+  }
+
+  delay(screenOn ? 33 : 200);
 }

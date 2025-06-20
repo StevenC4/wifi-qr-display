@@ -19,4 +19,4 @@ __pycache__/
 *.bak
 
 # Custom
-secrets.h
+secrets.cpp
